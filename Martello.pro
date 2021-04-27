@@ -9,5 +9,9 @@ INCLUDEPATH += .
 QT += network
 
 # Input
-HEADERS += martello.h
+HEADERS += tellostruct.h \
+           tellocmdthread.h \
+	   tellosttthread.h \
+	   tellovidthread.h \
+	   martello.h
 SOURCES += main.cpp
