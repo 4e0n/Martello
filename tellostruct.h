@@ -3,7 +3,7 @@
 #define TELLO_STRUCT_H
 
 struct TelloStruct {
- bool pollConnection,connected,startComm;
+ bool pollConnection,startComm;
 
  bool cmdForward,cmdBackward,cmdLeft,cmdRight;
  bool cmdUp,cmdDown,cmdCCW,cmdCW;

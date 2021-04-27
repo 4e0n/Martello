@@ -41,23 +41,65 @@ class Martello : public QMainWindow {
    guiWidth=800; guiHeight=600; guiX=40; guiY=40;
 
    // Setup tello structure for command, state and video threads
-   tello.pollConnection=tello.connected=tello.startComm= \
+   tello.pollConnection=tello.startComm= \
    tello.cmdForward=tello.cmdBackward=tello.cmdLeft=tello.cmdRight= \
    tello.cmdUp=tello.cmdDown=tello.cmdCCW=tello.cmdCW= \
    tello.cmdFlip=tello.cmdGo= \
    tello.cmdTakeOff=tello.cmdLand=tello.cmdEmergency=tello.cmdStop=false;
-   tello.cmdParam1=tello.cmdParam2=tello.cmdParam3=tello.cmdParam4=false;
+   tello.cmdParam1=tello.cmdParam2=tello.cmdParam3=tello.cmdParam4=0;
+
+   // Setup sockets
+   telloCmdSocket=new QUdpSocket(this);
+   telloCmdSocket->bind(QHostAddress("192.168.10.1"),8889);
+   telloSttSocket=new QUdpSocket(this);
+   telloSttSocket->bind(QHostAddress("192.168.10.1"),8890);
+   telloVidSocket=new QUdpSocket(this);
+   telloVidSocket->bind(QHostAddress("192.168.10.1"),11111);
+
+   connect(telloCmdSocket,SIGNAL(connected()),
+           this,SLOT(slotTelloCmdConnected()));
+   connect(telloCmdSocket,SIGNAL(disconnected()),
+           this,SLOT(slotTelloCmdDisconnected()));
+
+   connect(telloSttSocket,SIGNAL(connected()),
+           this,SLOT(slotTelloSttConnected()));
+   connect(telloSttSocket,SIGNAL(disconnected()),
+           this,SLOT(slotTelloSttDisconnected()));
+
+   connect(telloVidSocket,SIGNAL(connected()),
+           this,SLOT(slotTelloVidConnected()));
+   connect(telloVidSocket,SIGNAL(disconnected()),
+           this,SLOT(slotTelloVidDisconnected()));
 
    //Setup command, state and video threads
-   telloCmdTActive=telloSttTActive=telloVidTActive=true;
    telloCmdThread=new TelloCmdThread(this,&tello,&telloCmdMutex,
-		                          &telloCmdTActive);
+		                          &telloCmdTActive,telloCmdSocket);
    telloSttThread=new TelloSttThread(this,&tello,&telloSttMutex,
-		                          &telloSttTActive);
+		                          &telloSttTActive,telloSttSocket);
    telloVidThread=new TelloVidThread(this,&tello,&telloVidMutex,
-		                          &telloVidTActive);
-   //telloCmdThread->start(QThread::HighestPriority);
-   telloCmdThread->start(); telloSttThread->start(); telloVidThread->start();
+		                          &telloVidTActive,telloVidSocket);
+
+   connect(telloCmdThread,SIGNAL(signalTelloCmdConnect()),
+           this,SLOT(slotTelloCmdConnect()));
+   connect(telloCmdThread,SIGNAL(signalTelloCmdDisconnect()),
+           this,SLOT(slotTelloCmdDisconnect()));
+   connect(telloCmdThread,SIGNAL(signalTelloCmdSend(QByteArray)),
+           this,SLOT(slotTelloCmdSend(QByteArray)));
+
+   connect(telloSttThread,SIGNAL(signalTelloSttConnect()),
+           this,SLOT(slotTelloSttConnect()));
+   connect(telloSttThread,SIGNAL(signalTelloSttDisconnect()),
+           this,SLOT(slotTelloSttDisconnect()));
+   connect(telloSttThread,SIGNAL(signalTelloSttSend(QByteArray)),
+           this,SLOT(slotTelloSttSend(QByteArray)));
+
+   connect(telloVidThread,SIGNAL(signalTelloVidConnect()),
+           this,SLOT(slotTelloVidConnect()));
+   connect(telloVidThread,SIGNAL(signalTelloVidDisconnect()),
+           this,SLOT(slotTelloVidDisconnect()));
+   connect(telloVidThread,SIGNAL(signalTelloVidSend(QByteArray)),
+           this,SLOT(slotTelloVidSend(QByteArray)));
+
 
    // *** GUI ***
    setGeometry(guiX,guiY,guiWidth,guiHeight);
@@ -90,7 +132,8 @@ class Martello : public QMainWindow {
            this,SLOT(slotChangeWIFI()));
    connectAction=new QAction("&Connect..",this);
    connectAction->setStatusTip("Poll connection to Tello..");
-   connect(connectAction,SIGNAL(triggered()),this,SLOT(slotConnect()));
+   connect(connectAction,SIGNAL(triggered()),
+           this,SLOT(slotConnect()));
 
    // Add actions to menus
    sysMenu->addAction(aboutAction); sysMenu->addSeparator();
@@ -101,6 +144,13 @@ class Martello : public QMainWindow {
 //   upButton=new QPushButton("Up",this);
 //   upButton->setGeometry(200,100,40,40); upButton->show();
 //   connect(upButton,SIGNAL(clicked()),this,SLOT(slotUp()));
+   statusLabel=new QLabel(this);
+   statusLabel->setGeometry(guiWidth-70,guiHeight-50,60,20);
+
+   // Acticate loops of all via flag
+   telloCmdTActive=telloSttTActive=telloVidTActive=true;
+   //telloCmdThread->start(QThread::HighestPriority);
+   telloCmdThread->start(); telloSttThread->start(); telloVidThread->start();
 
    setWindowTitle(
     "MarTELLO v0.9.0 - (c) GPL 2021 Barkin Ilhan - barkin@unrlabs.org");
@@ -109,38 +159,38 @@ class Martello : public QMainWindow {
  protected:
   void keyPressEvent(QKeyEvent *e) {
    if (!e->isAutoRepeat()) {
-         if (e->key() == Qt::Key_W) { qDebug() << "W"; tello.cmdForward=true; }
-    else if (e->key() == Qt::Key_S) { qDebug() << "S"; tello.cmdBackward=true; }
-    else if (e->key() == Qt::Key_A) { qDebug() << "A"; tello.cmdLeft=true; }
-    else if (e->key() == Qt::Key_D) { qDebug() << "D"; tello.cmdRight=true; }
+         if (e->key()==Qt::Key_W) { qDebug() << "W"; tello.cmdForward=true; }
+    else if (e->key()==Qt::Key_S) { qDebug() << "S"; tello.cmdBackward=true; }
+    else if (e->key()==Qt::Key_A) { qDebug() << "A"; tello.cmdLeft=true; }
+    else if (e->key()==Qt::Key_D) { qDebug() << "D"; tello.cmdRight=true; }
 
-    else if (e->key() == Qt::Key_I) { qDebug() << "I"; tello.cmdUp=true; }
-    else if (e->key() == Qt::Key_K) { qDebug() << "K"; tello.cmdDown=true; }
-    else if (e->key() == Qt::Key_J) { qDebug() << "J"; tello.cmdCCW=true; }
-    else if (e->key() == Qt::Key_L) { qDebug() << "L"; tello.cmdCW=true; }
+    else if (e->key()==Qt::Key_I) { qDebug() << "I"; tello.cmdUp=true; }
+    else if (e->key()==Qt::Key_K) { qDebug() << "K"; tello.cmdDown=true; }
+    else if (e->key()==Qt::Key_J) { qDebug() << "J"; tello.cmdCCW=true; }
+    else if (e->key()==Qt::Key_L) { qDebug() << "L"; tello.cmdCW=true; }
 
-    else if (e->key() == Qt::Key_1) { qDebug() << "1"; tello.cmdTakeOff=true; }
-    else if (e->key() == Qt::Key_2) { qDebug() << "2"; tello.cmdLand=true; }
-    else if (e->key() == Qt::Key_0) { qDebug() << "0"; tello.cmdEmergency=true; }
-    e->ignore();
+    else if (e->key()==Qt::Key_1) { qDebug() << "1"; tello.cmdTakeOff=true; }
+    else if (e->key()==Qt::Key_2) { qDebug() << "2"; tello.cmdLand=true; }
+    else if (e->key()==Qt::Key_0) { qDebug() << "0"; tello.cmdEmergency=true; }
    }
+   e->ignore();
   }
 
   void keyReleaseEvent(QKeyEvent *e) {
 //   if (!e->isAutoRepeat()) {
-         if (e->key() == Qt::Key_W) { qDebug() << "W"; tello.cmdForward=false; }
-    else if (e->key() == Qt::Key_S) { qDebug() << "S"; tello.cmdBackward=false; }
-    else if (e->key() == Qt::Key_A) { qDebug() << "A"; tello.cmdLeft=false; }
-    else if (e->key() == Qt::Key_D) { qDebug() << "D"; tello.cmdRight=false; }
+        if (e->key()==Qt::Key_W) { qDebug() << "W"; tello.cmdForward=false; }
+   else if (e->key()==Qt::Key_S) { qDebug() << "S"; tello.cmdBackward=false; }
+   else if (e->key()==Qt::Key_A) { qDebug() << "A"; tello.cmdLeft=false; }
+   else if (e->key()==Qt::Key_D) { qDebug() << "D"; tello.cmdRight=false; }
 
-    else if (e->key() == Qt::Key_I) { qDebug() << "I"; tello.cmdUp=false; }
-    else if (e->key() == Qt::Key_K) { qDebug() << "K"; tello.cmdDown=false; }
-    else if (e->key() == Qt::Key_J) { qDebug() << "J"; tello.cmdCCW=false; }
-    else if (e->key() == Qt::Key_L) { qDebug() << "L"; tello.cmdCW=false; }
+   else if (e->key()==Qt::Key_I) { qDebug() << "I"; tello.cmdUp=false; }
+   else if (e->key()==Qt::Key_K) { qDebug() << "K"; tello.cmdDown=false; }
+   else if (e->key()==Qt::Key_J) { qDebug() << "J"; tello.cmdCCW=false; }
+   else if (e->key()==Qt::Key_L) { qDebug() << "L"; tello.cmdCW=false; }
 
-    else if (e->key() == Qt::Key_1) { qDebug() << "1"; tello.cmdTakeOff=false; }
-    else if (e->key() == Qt::Key_2) { qDebug() << "2"; tello.cmdLand=false; }
-    else if (e->key() == Qt::Key_0) { qDebug() << "0"; tello.cmdEmergency=false; }
+   else if (e->key()==Qt::Key_1) { qDebug() << "1"; tello.cmdTakeOff=false; }
+   else if (e->key()==Qt::Key_2) { qDebug() << "2"; tello.cmdLand=false; }
+   else if (e->key()==Qt::Key_0) { qDebug() << "0"; tello.cmdEmergency=false; }
    e->ignore();
 //   }
   }
@@ -157,13 +207,28 @@ class Martello : public QMainWindow {
 
   void slotQuit() {
    //cmd.=false;
-   application->exit(0);
+   telloCmdSocket->disconnectFromHost(); telloCmdTActive=false;
+   telloSttSocket->disconnectFromHost(); telloSttTActive=false;
+   telloVidSocket->disconnectFromHost(); telloVidTActive=false;
+   while (!(telloCmdThread->isFinished() &&
+	    telloSttThread->isFinished() &&
+	    telloVidThread->isFinished()));
+   if ((telloCmdSocket->state()==QAbstractSocket::UnconnectedState ||
+        telloCmdSocket->waitForDisconnected(1000)) &&
+       (telloSttSocket->state()==QAbstractSocket::UnconnectedState ||
+        telloSttSocket->waitForDisconnected(1000)) &&
+       (telloVidSocket->state()==QAbstractSocket::UnconnectedState ||
+        telloVidSocket->waitForDisconnected(1000)))
+    application->exit(0);
+   else { qDebug("MarTELLO: Rude exit!"); application->exit(0); }
   }
 
   void slotChangeWIFI() {
 	  ;
   }
 
+  // Set policy -- to be interpreted and backpropagated to
+  // slotTelloConnect() & slotTelloDisconnect() by telloCmdThread
   void slotConnect() {
    if (tello.pollConnection) {
     connectAction->setText("&Connect.."); tello.pollConnection=false;
@@ -171,10 +236,79 @@ class Martello : public QMainWindow {
     connectAction->setText("&Disconnect.."); tello.pollConnection=true;
    }
   }
+ 
+  // ***** TELLO COMM SIGNALS FROM THREADS
+ 
+  // CMD
+  void slotTelloCmdConnect() {
+   qDebug("MarTELLO: slotTelloCmdConnect()");
+   telloCmdSocket->connectToHost("192.168.10.1",8889);
+  }
+  void slotTelloCmdConnected() {
+   qDebug("MarTELLO: slotTelloCmdConnected()");
+   if (telloCmdSocket->state()==QAbstractSocket::ConnectedState &&
+       telloSttSocket->state()==QAbstractSocket::ConnectedState &&
+       telloVidSocket->state()==QAbstractSocket::ConnectedState)
+    statusLabel->setText("CONNECTED");
+   tello.startComm=true;
+  }
+  void slotTelloCmdDisconnect() {
+   qDebug("MarTELLO: slotTelloCmdDisconnect()");
+   telloCmdSocket->disconnectFromHost();
+  }
+  void slotTelloCmdDisconnected() {
+   qDebug("MarTELLO: slotTelloCmdDisconnected()");
+   statusLabel->setText("");
+  }
+  void slotTelloCmdSend(QByteArray c) {
+   qDebug("%s",QString("MarTELLO: slotTelloCmdSend()") \
+		       .append(c).toAscii().data());
+   if (telloCmdSocket->write(c.data())==-1)
+    qDebug("MarTELLO: ERROR !! during data writing to socket.");
+   while (!telloCmdSocket->bytesAvailable());
+   QByteArray ba=telloCmdSocket->readAll();
+   //qDebug("%s: %s",QString(c).toAscii().data(),
+//		   QString(ba).toAscii().data());
+  }
 
-  void slotStartComm() { tello.startComm=true; }
-  void slotStopComm() { ; }
+  // STT
+  void slotTelloSttConnect() {
+   qDebug("MarTELLO: slotTelloSttConnect()");
+   telloSttSocket->connectToHost("192.168.10.1",8890);
+  }
+  void slotTelloSttConnected() {
+   qDebug("MarTELLO: slotTelloSttConnected()");
+  }
+  void slotTelloSttDisconnect() {
+   qDebug("MarTELLO: slotTelloSttDisconnect()");
+   telloSttSocket->disconnectFromHost();
+  }
+  void slotTelloSttDisconnected() {
+   qDebug("MarTELLO: slotTelloSttDisconnected()");
+  }
+  void slotTelloSttSend(QByteArray c) {
+	  ;
+  }
 
+  // VID
+  void slotTelloVidConnect() {
+   qDebug("MarTELLO: slotTelloVidConnect()");
+   telloVidSocket->connectToHost("192.168.10.1",11111);
+  }
+  void slotTelloVidConnected() {
+   qDebug("MarTELLO: slotTelloVidConnected()");
+  }
+  void slotTelloVidDisconnect() {
+   qDebug("MarTELLO: slotTelloVidDisconnect()");
+   telloVidSocket->disconnectFromHost();
+  }
+  void slotTelloVidDisconnected() {
+   qDebug("MarTELLO: slotTelloVidDisconnected()");
+  }
+  void slotTelloVidSend(QByteArray c) {
+	  ;
+  }
+ 
  private:
   QApplication *application;
 
@@ -183,6 +317,8 @@ class Martello : public QMainWindow {
   QMutex telloCmdMutex,telloSttMutex,telloVidMutex; TelloStruct tello;
   bool telloCmdTActive,telloSttTActive,telloVidTActive;
 
+  QUdpSocket *telloCmdSocket,*telloSttSocket,*telloVidSocket;
+
   // GUI
   int guiX,guiY,guiWidth,guiHeight;
 
@@ -190,9 +326,16 @@ class Martello : public QMainWindow {
   QAction *aboutAction,*quitAction, \
 	  *changeWIFIAction,*connectAction;
 
+  QLabel *statusLabel;
 //  QPushButton *upButton,*downButton,*leftButton,*rightButton;
 
   QStatusBar *guiStatusBar;
 };
 
 #endif
+exitCode=QProcess::execute("ping -r -q -n -c 1 -w 1 192.168.10.1");
+if (exitCode==0) {
+    // it's alive
+} else {
+    // it's dead
+}
