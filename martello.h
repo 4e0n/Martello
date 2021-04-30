@@ -29,6 +29,7 @@ MarTELLO - Brain-Drone Interface for Ryze Tello Drones
 #include <QtGui>
 #include <QtNetwork>
 #include "tellostruct.h"
+#include "tellokeepalive.h"
 #include "tellocmdthread.h"
 #include "tellosttthread.h"
 #include "tellovidthread.h"
@@ -41,20 +42,21 @@ class Martello : public QMainWindow {
    guiWidth=800; guiHeight=600; guiX=40; guiY=40;
 
    // Setup tello structure for command, state and video threads
-   tello.pollConnection=tello.startComm= \
+   tello.startComm= \
    tello.cmdForward=tello.cmdBackward=tello.cmdLeft=tello.cmdRight= \
    tello.cmdUp=tello.cmdDown=tello.cmdCCW=tello.cmdCW= \
    tello.cmdFlip=tello.cmdGo= \
    tello.cmdTakeOff=tello.cmdLand=tello.cmdEmergency=tello.cmdStop=false;
    tello.cmdParam1=tello.cmdParam2=tello.cmdParam3=tello.cmdParam4=0;
+   tello.ip="192.168.10.1";
 
    // Setup sockets
    telloCmdSocket=new QUdpSocket(this);
-   telloCmdSocket->bind(QHostAddress("192.168.10.1"),8889);
+   telloCmdSocket->bind(QHostAddress(tello.ip),8889);
    telloSttSocket=new QUdpSocket(this);
-   telloSttSocket->bind(QHostAddress("192.168.10.1"),8890);
+   telloSttSocket->bind(QHostAddress(tello.ip),8890);
    telloVidSocket=new QUdpSocket(this);
-   telloVidSocket->bind(QHostAddress("192.168.10.1"),11111);
+   telloVidSocket->bind(QHostAddress(tello.ip),11111);
 
    connect(telloCmdSocket,SIGNAL(connected()),
            this,SLOT(slotTelloCmdConnected()));
@@ -72,34 +74,40 @@ class Martello : public QMainWindow {
            this,SLOT(slotTelloVidDisconnected()));
 
    //Setup command, state and video threads
+   telloKeepAlive=new TelloKeepAlive(this,&tello,&telloKAMutex,
+                                          &telloKATActive);
    telloCmdThread=new TelloCmdThread(this,&tello,&telloCmdMutex,
-		                          &telloCmdTActive,telloCmdSocket);
+                                          &telloCmdTActive,telloCmdSocket);
    telloSttThread=new TelloSttThread(this,&tello,&telloSttMutex,
-		                          &telloSttTActive,telloSttSocket);
+                                          &telloSttTActive,telloSttSocket);
    telloVidThread=new TelloVidThread(this,&tello,&telloVidMutex,
-		                          &telloVidTActive,telloVidSocket);
+                                          &telloVidTActive,telloVidSocket);
 
-   connect(telloCmdThread,SIGNAL(signalTelloCmdConnect()),
-           this,SLOT(slotTelloCmdConnect()));
-   connect(telloCmdThread,SIGNAL(signalTelloCmdDisconnect()),
-           this,SLOT(slotTelloCmdDisconnect()));
-   connect(telloCmdThread,SIGNAL(signalTelloCmdSend(QByteArray)),
-           this,SLOT(slotTelloCmdSend(QByteArray)));
+//   connect(telloCmdThread,SIGNAL(signalTelloCmdConnect()),
+//           this,SLOT(slotTelloCmdConnect()));
+//   connect(telloCmdThread,SIGNAL(signalTelloCmdDisconnect()),
+//           this,SLOT(slotTelloCmdDisconnect()));
+//   connect(telloCmdThread,SIGNAL(signalTelloCmdSend(QByteArray)),
+//           this,SLOT(slotTelloCmdSend(QByteArray)));
 
-   connect(telloSttThread,SIGNAL(signalTelloSttConnect()),
-           this,SLOT(slotTelloSttConnect()));
-   connect(telloSttThread,SIGNAL(signalTelloSttDisconnect()),
-           this,SLOT(slotTelloSttDisconnect()));
-   connect(telloSttThread,SIGNAL(signalTelloSttSend(QByteArray)),
-           this,SLOT(slotTelloSttSend(QByteArray)));
+//   connect(telloSttThread,SIGNAL(signalTelloSttConnect()),
+//           this,SLOT(slotTelloSttConnect()));
+//   connect(telloSttThread,SIGNAL(signalTelloSttDisconnect()),
+//           this,SLOT(slotTelloSttDisconnect()));
+//   connect(telloSttThread,SIGNAL(signalTelloSttSend(QByteArray)),
+//           this,SLOT(slotTelloSttSend(QByteArray)));
 
-   connect(telloVidThread,SIGNAL(signalTelloVidConnect()),
-           this,SLOT(slotTelloVidConnect()));
-   connect(telloVidThread,SIGNAL(signalTelloVidDisconnect()),
-           this,SLOT(slotTelloVidDisconnect()));
-   connect(telloVidThread,SIGNAL(signalTelloVidSend(QByteArray)),
-           this,SLOT(slotTelloVidSend(QByteArray)));
+//   connect(telloVidThread,SIGNAL(signalTelloVidConnect()),
+//           this,SLOT(slotTelloVidConnect()));
+//   connect(telloVidThread,SIGNAL(signalTelloVidDisconnect()),
+//           this,SLOT(slotTelloVidDisconnect()));
+//   connect(telloVidThread,SIGNAL(signalTelloVidSend(QByteArray)),
+//           this,SLOT(slotTelloVidSend(QByteArray)));
 
+   connect(telloKeepAlive,SIGNAL(signalTelloAlive()),
+           this,SLOT(slotTelloAlive()));
+   connect(telloKeepAlive,SIGNAL(signalTelloDead()),
+           this,SLOT(slotTelloDead()));
 
    // *** GUI ***
    setGeometry(guiX,guiY,guiWidth,guiHeight);
@@ -130,16 +138,11 @@ class Martello : public QMainWindow {
    changeWIFIAction->setStatusTip("Set New SSID and password for Tello..");
    connect(changeWIFIAction,SIGNAL(triggered()),
            this,SLOT(slotChangeWIFI()));
-   connectAction=new QAction("&Connect..",this);
-   connectAction->setStatusTip("Poll connection to Tello..");
-   connect(connectAction,SIGNAL(triggered()),
-           this,SLOT(slotConnect()));
 
    // Add actions to menus
    sysMenu->addAction(aboutAction); sysMenu->addSeparator();
    sysMenu->addAction(quitAction);
-   netMenu->addAction(changeWIFIAction); netMenu->addSeparator();
-   netMenu->addAction(connectAction);
+   netMenu->addAction(changeWIFIAction);
 
 //   upButton=new QPushButton("Up",this);
 //   upButton->setGeometry(200,100,40,40); upButton->show();
@@ -148,8 +151,9 @@ class Martello : public QMainWindow {
    statusLabel->setGeometry(guiWidth-70,guiHeight-50,60,20);
 
    // Acticate loops of all via flag
-   telloCmdTActive=telloSttTActive=telloVidTActive=true;
+   telloKATActive=telloCmdTActive=telloSttTActive=telloVidTActive=true;
    //telloCmdThread->start(QThread::HighestPriority);
+   telloKeepAlive->start();
    telloCmdThread->start(); telloSttThread->start(); telloVidThread->start();
 
    setWindowTitle(
@@ -206,11 +210,14 @@ class Martello : public QMainWindow {
   }
 
   void slotQuit() {
+   qDebug("MarTELLO: Exiting...");
    //cmd.=false;
-   telloCmdSocket->disconnectFromHost(); telloCmdTActive=false;
-   telloSttSocket->disconnectFromHost(); telloSttTActive=false;
    telloVidSocket->disconnectFromHost(); telloVidTActive=false;
-   while (!(telloCmdThread->isFinished() &&
+   telloSttSocket->disconnectFromHost(); telloSttTActive=false;
+   telloCmdSocket->disconnectFromHost(); telloCmdTActive=false;
+   telloKATActive=false;
+   while (!(telloKeepAlive->isFinished() &&
+            telloCmdThread->isFinished() &&
 	    telloSttThread->isFinished() &&
 	    telloVidThread->isFinished()));
    if ((telloCmdSocket->state()==QAbstractSocket::UnconnectedState ||
@@ -227,22 +234,12 @@ class Martello : public QMainWindow {
 	  ;
   }
 
-  // Set policy -- to be interpreted and backpropagated to
-  // slotTelloConnect() & slotTelloDisconnect() by telloCmdThread
-  void slotConnect() {
-   if (tello.pollConnection) {
-    connectAction->setText("&Connect.."); tello.pollConnection=false;
-   } else {
-    connectAction->setText("&Disconnect.."); tello.pollConnection=true;
-   }
-  }
- 
   // ***** TELLO COMM SIGNALS FROM THREADS
  
   // CMD
   void slotTelloCmdConnect() {
    qDebug("MarTELLO: slotTelloCmdConnect()");
-   telloCmdSocket->connectToHost("192.168.10.1",8889);
+//   telloCmdSocket->connectToHost(tello.ip,8889);
   }
   void slotTelloCmdConnected() {
    qDebug("MarTELLO: slotTelloCmdConnected()");
@@ -250,7 +247,7 @@ class Martello : public QMainWindow {
        telloSttSocket->state()==QAbstractSocket::ConnectedState &&
        telloVidSocket->state()==QAbstractSocket::ConnectedState)
     statusLabel->setText("CONNECTED");
-   tello.startComm=true;
+//   tello.startComm=true;
   }
   void slotTelloCmdDisconnect() {
    qDebug("MarTELLO: slotTelloCmdDisconnect()");
@@ -267,21 +264,21 @@ class Martello : public QMainWindow {
     qDebug("MarTELLO: ERROR !! during data writing to socket.");
    while (!telloCmdSocket->bytesAvailable());
    QByteArray ba=telloCmdSocket->readAll();
-   //qDebug("%s: %s",QString(c).toAscii().data(),
-//		   QString(ba).toAscii().data());
+   qDebug("%s: %s",QString(c).toAscii().data(),
+		   QString(ba).toAscii().data());
   }
 
   // STT
   void slotTelloSttConnect() {
    qDebug("MarTELLO: slotTelloSttConnect()");
-   telloSttSocket->connectToHost("192.168.10.1",8890);
+//   telloSttSocket->connectToHost(tello.ip,8890);
   }
   void slotTelloSttConnected() {
    qDebug("MarTELLO: slotTelloSttConnected()");
   }
   void slotTelloSttDisconnect() {
    qDebug("MarTELLO: slotTelloSttDisconnect()");
-   telloSttSocket->disconnectFromHost();
+//   telloSttSocket->disconnectFromHost();
   }
   void slotTelloSttDisconnected() {
    qDebug("MarTELLO: slotTelloSttDisconnected()");
@@ -293,14 +290,14 @@ class Martello : public QMainWindow {
   // VID
   void slotTelloVidConnect() {
    qDebug("MarTELLO: slotTelloVidConnect()");
-   telloVidSocket->connectToHost("192.168.10.1",11111);
+//   telloVidSocket->connectToHost(tello.ip,11111);
   }
   void slotTelloVidConnected() {
-   qDebug("MarTELLO: slotTelloVidConnected()");
+//   qDebug("MarTELLO: slotTelloVidConnected()");
   }
   void slotTelloVidDisconnect() {
    qDebug("MarTELLO: slotTelloVidDisconnect()");
-   telloVidSocket->disconnectFromHost();
+//   telloVidSocket->disconnectFromHost();
   }
   void slotTelloVidDisconnected() {
    qDebug("MarTELLO: slotTelloVidDisconnected()");
@@ -308,14 +305,26 @@ class Martello : public QMainWindow {
   void slotTelloVidSend(QByteArray c) {
 	  ;
   }
+
+  void slotTelloAlive() {
+//   statusLabel->setText("CONNECTED");
+   telloCmdSocket->connectToHost(tello.ip,8889);
+   telloSttSocket->connectToHost(tello.ip,8890);
+   telloVidSocket->connectToHost(tello.ip,11111);
+//   tello.startComm=true;
+  }
+  void slotTelloDead() {
+   statusLabel->setText("");
+  }
  
  private:
   QApplication *application;
 
   // Threads
-  QThread *telloCmdThread,*telloSttThread,*telloVidThread;
-  QMutex telloCmdMutex,telloSttMutex,telloVidMutex; TelloStruct tello;
-  bool telloCmdTActive,telloSttTActive,telloVidTActive;
+  QThread *telloKeepAlive,*telloCmdThread,*telloSttThread,*telloVidThread;
+  QMutex telloKAMutex,telloCmdMutex,telloSttMutex,telloVidMutex;
+  TelloStruct tello;
+  bool telloKATActive,telloCmdTActive,telloSttTActive,telloVidTActive;
 
   QUdpSocket *telloCmdSocket,*telloSttSocket,*telloVidSocket;
 
@@ -324,7 +333,7 @@ class Martello : public QMainWindow {
 
   QMenuBar *menuBar;
   QAction *aboutAction,*quitAction, \
-	  *changeWIFIAction,*connectAction;
+	  *changeWIFIAction;
 
   QLabel *statusLabel;
 //  QPushButton *upButton,*downButton,*leftButton,*rightButton;
@@ -333,9 +342,3 @@ class Martello : public QMainWindow {
 };
 
 #endif
-exitCode=QProcess::execute("ping -r -q -n -c 1 -w 1 192.168.10.1");
-if (exitCode==0) {
-    // it's alive
-} else {
-    // it's dead
-}

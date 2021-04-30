@@ -10,6 +10,7 @@ QT += network
 
 # Input
 HEADERS += tellostruct.h \
+           tellokeepalive.h \
            tellocmdthread.h \
 	   tellosttthread.h \
 	   tellovidthread.h \

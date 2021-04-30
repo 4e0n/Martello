@@ -12,6 +12,7 @@ struct TelloStruct {
  bool cmdTakeOff,cmdLand,cmdEmergency,cmdStop;
 
  int cmdParam1,cmdParam2,cmdParam3,cmdParam4;
+ QString ip;
 };
 
 #endif
