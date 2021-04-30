@@ -3,7 +3,8 @@
 #define TELLO_STRUCT_H
 
 struct TelloStruct {
- bool pollConnection,startComm;
+ bool pollConnection,startComm,connected;
+ bool cmdQuit,sttQuit,vidQuit;
 
  bool cmdForward,cmdBackward,cmdLeft,cmdRight;
  bool cmdUp,cmdDown,cmdCCW,cmdCW;
@@ -13,6 +14,8 @@ struct TelloStruct {
 
  int cmdParam1,cmdParam2,cmdParam3,cmdParam4;
  QString ip;
+
+ int speed,batLevel,time,snr,sdkVer; QString sn;
 };
 
 #endif

@@ -38,13 +38,15 @@ class TelloKeepAlive : public QThread {
 
   virtual void run() {
    qDebug("Keepalive Thread: Activated..");
-   QProcess p; //p.setStandardOutputFile("/dev/null");
+   QProcess p; p.setStandardOutputFile("/dev/null");
    QString pingCmd=QString("ping -c 1 -w 1 -q ").append(tello->ip);
    qDebug("%s",pingCmd.toAscii().data());
    while (*active) {
     p.start(pingCmd); p.waitForFinished();
-    if (p.exitCode()==0) { emit signalTelloAlive(); msleep(500); }
-    else { emit signalTelloDead(); msleep(500); }
+    if (p.exitCode()==0) {
+     if (!tello->connected) emit signalTelloAlive();
+     msleep(250);
+    } else { emit signalTelloDead(); msleep(250); }
    } // while
    qDebug("Keepalive Thread: Stopping..");
   }
@@ -58,5 +60,3 @@ class TelloKeepAlive : public QThread {
 };
 
 #endif
-    //exitCode=QProcess::execute("ping -c 1 -w 1 -q 192.168.10.1");
-		   // 2>&1 >/dev/null

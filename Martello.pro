@@ -13,6 +13,6 @@ HEADERS += tellostruct.h \
            tellokeepalive.h \
            tellocmdthread.h \
 	   tellosttthread.h \
-	   tellovidthread.h \
+#	   tellovidthread.h \
 	   martello.h
 SOURCES += main.cpp

@@ -32,98 +32,56 @@ MarTELLO - Brain-Drone Interface for Ryze Tello Drones
 class TelloSttThread : public QThread {
  Q_OBJECT
  public:
-  TelloSttThread(QObject* p,TelloStruct *ts,QMutex *m,bool *t, \
-		 QUdpSocket *s): QThread(p) {
-   parent=p; tello=ts; mutex=m; active=t; socket=s;
+  TelloSttThread(QObject* p,TelloStruct *ts,QMutex *m,bool *t) : QThread(p) {
+   parent=p; tello=ts; mutex=m; active=t;
   }
 
   virtual void run() {
-   qDebug("State Thread activated..");
+   qDebug("State Thread: Started..");
+   QUdpSocket socket; QString cmdResult;
    while (*active) {
-    if (tello->pollConnection && \
-        (socket->state()!=QAbstractSocket::ConnectedState)) {
- emit signalTelloSttConnect();
-    } else if (socket->state()==QAbstractSocket::ConnectedState) {
-     if (!tello->pollConnection) {
- emit signalTelloSttDisconnect();
-     } else {
-//      if (tello->startComm) {
-//       qDebug("Thread: Started Comm..");
-//       tello->startComm=false;
-//       emit signalTelloCmdSend(QByteArray("command"));
-//      } else if (tello->cmdUp) {
-//       qDebug("Thread: Up..");
-//       emit signalTelloCmdSend(QByteArray("up ").append(QByteArray::number(20)));
-//      } else if (tello->cmdDown) {
-//       qDebug("Thread: Down..");
-//       emit signalTelloCmdSend(QByteArray("down ").append(QByteArray::number(20)));
-//      } else if (tello->cmdLeft) {
-//       qDebug("Thread: Left..");
-//       emit signalTelloCmdSend(QByteArray("left ").append(QByteArray::number(20)));
-//      } else if (tello->cmdRight) {
-//       qDebug("Thread: Right..");
-//       emit signalTelloCmdSend(QByteArray("right ").append(QByteArray::number(20)));
-//      } else if (tello->cmdForward) {
-//       qDebug("Thread: Forward..");
-//       emit signalTelloCmdSend(QByteArray("forward ").append(QByteArray::number(20)));
-//      } else if (tello->cmdBackward) {
-//       qDebug("Thread: Backward..");
-//       emit signalTelloCmdSend(QByteArray("back ").append(QByteArray::number(20)));
-//      } else if (tello->cmdCCW) {
-//       qDebug("Thread: Rotate left..");
-//       emit signalTelloCmdSend(QByteArray("ccw ").append(QByteArray::number(1)));
-//      } else if (tello->cmdCW) {
-//       qDebug("Thread: Rotate right..");
-//       emit signalTelloCmdSend(QByteArray("cw ").append(QByteArray::number(1)));
-//      } else if (tello->cmdFlip) {
-//       tello->cmdFlip=false; char dir;
-//       switch (tello->cmdParam1) {
-//        case 0: dir='f'; qDebug("Thread: Flip forward.."); break;
-//        case 1: dir='b'; qDebug("Thread: Flip backward.."); break;
-//        case 2: dir='l'; qDebug("Thread: Flip left.."); break;
-//        case 3: dir='r'; qDebug("Thread: Flip right.."); break;
-//       };
-//       qDebug("%s",QByteArray("flip ").append(dir).data());
-//       emit signalTelloCmdSend(QByteArray("flip ").append(dir));
-//      } else if (tello->cmdGo) {
-//       tello->cmdGo=false;
-//       emit signalTelloCmdSend(QByteArray("go ") \
-// 		      .append(QByteArray::number(tello->cmdParam1)) \
-//                       .append(QByteArray::number(tello->cmdParam2)) \
-//                      .append(QByteArray::number(tello->cmdParam3)) \
-//                       .append(QByteArray::number(tello->cmdParam4)));
-//      } else if (tello->cmdTakeOff) {
-//       tello->cmdTakeOff=false;
-//       qDebug("Thread: Taking off..");
-//       emit signalTelloCmdSend(QByteArray("takeoff"));
-//      } else if (tello->cmdLand) {
-//       tello->cmdLand=false;
-//       qDebug("Thread: Landing..");
-//       emit signalTelloCmdSend(QByteArray("land"));
-//      } else if (tello->cmdEmergency) {
-//       tello->cmdEmergency=false;
-//       qDebug("Thread: Motors shut down..");
-//       emit signalTelloCmdSend(QByteArray("emergency"));
-//      } else if (tello->cmdStop) {
-//       tello->cmdStop=false;
-//       emit signalTelloCmdSend(QByteArray("stop"));
-//      }
-      ;
+    if (tello->connected) {
+     qDebug("State Thread: Connected..");
+     if (socket.state()==QAbstractSocket::UnconnectedState) {
+      socket.bind(QHostAddress(tello->ip),8890);
+      socket.connectToHost(tello->ip,8890);
+      while (socket.state()!=QAbstractSocket::ConnectedState);
      }
+
+//     int height=(telloCmd(&socket,"h")).toInt();
+//     int batLevel=(telloCmd(&socket,"battery")).toInt();
+//     int baro=(telloCmd(&socket,"baro")).toInt();
+//     qDebug("Height: %d, Bat: %d, Baro: %d",height,batLevel,baro);
+
+     msleep(1000);
+
+    }
+    if (tello->cmdQuit) {
+     socket.disconnectFromHost();
+     while (socket.state()!=QAbstractSocket::UnconnectedState);
+     *active=false;
+     qDebug("Command Thread: Quitting.");
     }
    } // while
 
-   qDebug("State Thread stopping..");
+   qDebug("Command Thread: Stopped..");
   }
 
- signals:
-  void signalTelloSttConnect();
-  void signalTelloSttDisconnect();
-  void signalTelloSttSend(QByteArray);
-
  private:
+  QString telloCmd(QUdpSocket* socket,QByteArray c) {
+   QString result; result="(null)";
+   qDebug("%s",QString("MarTELLO: slotTelloCmdSend()") \
+		       .append(c).toAscii().data());
+   if (socket->write(c.data())==-1)
+    qDebug("MarTELLO: (telloCmd) ERROR !! during data writing to socket.");
+   while (!socket->bytesAvailable());
+   QByteArray ba=socket->readAll(); result=QString(ba);
+   qDebug("%s: %s",QString(c).toAscii().data(),
+		   result.toAscii().data());
+   return result;
+  }
+
   QObject *parent; TelloStruct *tello; QMutex *mutex; bool *active;
-  QUdpSocket *socket;
 };
 
 #endif
