@@ -30,8 +30,8 @@ MarTELLO - Brain-Drone Interface for Ryze Tello Drones
 #include <QtNetwork>
 #include "tellostruct.h"
 #include "tellokeepalive.h"
-#include "tellocmdthread.h"
-#include "tellosttthread.h"
+//#include "tellocmdthread.h"
+//#include "tellosttthread.h"
 //#include "tellovidthread.h"
 
 class Martello : public QMainWindow {
@@ -39,34 +39,22 @@ class Martello : public QMainWindow {
  public:
   Martello(QApplication *app,QWidget *parent=0) : QMainWindow(parent) {
    application=app;
-   guiWidth=800; guiHeight=600; guiX=40; guiY=40;
+   guiWidth=800; guiHeight=600; guiX=500; guiY=80;
 
    // Setup tello structure for command, state and video threads
-   tello.startComm=tello.connected=tello.cmdQuit=tello.sttQuit=tello.vidQuit= \
-   tello.cmdForward=tello.cmdBackward=tello.cmdLeft=tello.cmdRight= \
-   tello.cmdUp=tello.cmdDown=tello.cmdCCW=tello.cmdCW= \
-   tello.cmdFlip=tello.cmdGo= \
+   tello.connected=tello.cmdQuit=tello.sttQuit=tello.vidQuit=\
    tello.cmdTakeOff=tello.cmdLand=tello.cmdEmergency=tello.cmdStop=false;
+   tello.cmd=Tello::cmdNULL;
    tello.cmdParam1=tello.cmdParam2=tello.cmdParam3=tello.cmdParam4=0;
    tello.ip="192.168.10.1";
-//   tello.ip="10.0.0.1";
 
    //Setup command, state and video threads
    telloKeepAlive=new TelloKeepAlive(this,&tello,&telloKAMutex,
                                           &telloKATActive);
-   telloCmdThread=new TelloCmdThread(this,&tello,&telloCmdMutex,
-                                          &telloCmdTActive);
-   telloSttThread=new TelloSttThread(this,&tello,&telloSttMutex,
-                                          &telloSttTActive);
-//   telloVidThread=new TelloVidThread(this,&tello,&telloVidMutex,
-//                                          &telloVidTActive);
-
-   connect(telloKeepAlive,SIGNAL(signalTelloAlive()),
-           this,SLOT(slotTelloAlive()));
-   connect(telloKeepAlive,SIGNAL(signalTelloDead()),
-           this,SLOT(slotTelloDead()));
-   connect(telloCmdThread,SIGNAL(signalTelloConnected()),
+   connect(telloKeepAlive,SIGNAL(signalTelloConnected()),
            this,SLOT(slotTelloConnected()));
+   connect(telloKeepAlive,SIGNAL(signalTelloInfoUpdate()),
+           this,SLOT(slotTelloInfoUpdate()));
 
    // *** GUI ***
    setGeometry(guiX,guiY,guiWidth,guiHeight);
@@ -105,12 +93,23 @@ class Martello : public QMainWindow {
 
    statusLabel=new QLabel(this);
    statusLabel->setGeometry(guiWidth-70,guiHeight-50,60,20);
+   speedLabel=new QLabel(this);
+   speedLabel->setGeometry(20,guiHeight-50,90,20);
+   batteryLabel=new QLabel(this);
+   batteryLabel->setGeometry(120,guiHeight-50,90,20);
+   timeLabel=new QLabel(this);
+   timeLabel->setGeometry(220,guiHeight-50,90,20);
+   wifiLabel=new QLabel(this);
+   wifiLabel->setGeometry(320,guiHeight-50,90,20);
+   sdkLabel=new QLabel(this);
+   sdkLabel->setGeometry(420,guiHeight-50,90,20);
+   snLabel=new QLabel(this);
+   snLabel->setGeometry(520,guiHeight-50,90,20);
 
    // Acticate loops of all via flag
-   telloKATActive=telloCmdTActive=telloSttTActive=telloVidTActive=true;
-   //telloCmdThread->start(QThread::HighestPriority);
+   telloKATActive=true;
+   //telloKeepAlive->start(QThread::HighestPriority);
    telloKeepAlive->start();
-   telloCmdThread->start(); telloSttThread->start(); //telloVidThread->start();
 
    setWindowTitle(
     "MarTELLO v0.9.0 - (c) GPL 2021 Barkin Ilhan - barkin@unrlabs.org");
@@ -119,15 +118,15 @@ class Martello : public QMainWindow {
  protected:
   void keyPressEvent(QKeyEvent *e) {
    if (!e->isAutoRepeat()) {
-         if (e->key()==Qt::Key_W) { qDebug() << "W"; tello.cmdForward=true; }
-    else if (e->key()==Qt::Key_S) { qDebug() << "S"; tello.cmdBackward=true; }
-    else if (e->key()==Qt::Key_A) { qDebug() << "A"; tello.cmdLeft=true; }
-    else if (e->key()==Qt::Key_D) { qDebug() << "D"; tello.cmdRight=true; }
+         if (e->key()==Qt::Key_W) { qDebug() << "W"; tello.cmd=Tello::cmdForward; }
+    else if (e->key()==Qt::Key_S) { qDebug() << "S"; tello.cmd=Tello::cmdBackward; }
+    else if (e->key()==Qt::Key_A) { qDebug() << "A"; tello.cmd=Tello::cmdLeft; }
+    else if (e->key()==Qt::Key_D) { qDebug() << "D"; tello.cmd=Tello::cmdRight; }
 
-    else if (e->key()==Qt::Key_I) { qDebug() << "I"; tello.cmdUp=true; }
-    else if (e->key()==Qt::Key_K) { qDebug() << "K"; tello.cmdDown=true; }
-    else if (e->key()==Qt::Key_J) { qDebug() << "J"; tello.cmdCCW=true; }
-    else if (e->key()==Qt::Key_L) { qDebug() << "L"; tello.cmdCW=true; }
+    else if (e->key()==Qt::Key_I) { qDebug() << "I"; tello.cmd=Tello::cmdUp; }
+    else if (e->key()==Qt::Key_K) { qDebug() << "K"; tello.cmd=Tello::cmdDown; }
+    else if (e->key()==Qt::Key_J) { qDebug() << "J"; tello.cmd=Tello::cmdYawL; }
+    else if (e->key()==Qt::Key_L) { qDebug() << "L"; tello.cmd=Tello::cmdYawR; }
 
     else if (e->key()==Qt::Key_1) { qDebug() << "1"; tello.cmdTakeOff=true; }
     else if (e->key()==Qt::Key_2) { qDebug() << "2"; tello.cmdLand=true; }
@@ -138,19 +137,7 @@ class Martello : public QMainWindow {
 
   void keyReleaseEvent(QKeyEvent *e) {
 //   if (!e->isAutoRepeat()) {
-        if (e->key()==Qt::Key_W) { qDebug() << "W"; tello.cmdForward=false; }
-   else if (e->key()==Qt::Key_S) { qDebug() << "S"; tello.cmdBackward=false; }
-   else if (e->key()==Qt::Key_A) { qDebug() << "A"; tello.cmdLeft=false; }
-   else if (e->key()==Qt::Key_D) { qDebug() << "D"; tello.cmdRight=false; }
-
-   else if (e->key()==Qt::Key_I) { qDebug() << "I"; tello.cmdUp=false; }
-   else if (e->key()==Qt::Key_K) { qDebug() << "K"; tello.cmdDown=false; }
-   else if (e->key()==Qt::Key_J) { qDebug() << "J"; tello.cmdCCW=false; }
-   else if (e->key()==Qt::Key_L) { qDebug() << "L"; tello.cmdCW=false; }
-
-   else if (e->key()==Qt::Key_1) { qDebug() << "1"; tello.cmdTakeOff=false; }
-   else if (e->key()==Qt::Key_2) { qDebug() << "2"; tello.cmdLand=false; }
-   else if (e->key()==Qt::Key_0) { qDebug() << "0"; tello.cmdEmergency=false; }
+   tello.cmd=Tello::cmdNULL;
    e->ignore();
 //   }
   }
@@ -159,7 +146,7 @@ class Martello : public QMainWindow {
   void slotAbout() {
    QMessageBox::about(this,"About MarTELLO",
                            "Ryze Tello Brain-Drone Interface Client\n"
-                           "(c) 2020 Barkin Ilhan (barkin@unrlabs.org)\n"
+                           "(c) 2021 Barkin Ilhan (barkin@unrlabs.org)\n"
                            "This is free software coming with\n"
                            "ABSOLUTELY NO WARRANTY; You are welcome\n"
                          "to redistribute it under conditions of GPL v3.\n");
@@ -170,10 +157,8 @@ class Martello : public QMainWindow {
    //cmd.=false;
    tello.cmdQuit=tello.sttQuit=tello.vidQuit=true;
    telloKATActive=false;
-   while (!(telloKeepAlive->isFinished() &&
-            telloCmdThread->isFinished() &&
-	    telloSttThread->isFinished()));
-            //telloVidThread->isFinished()));
+   while (!(telloKeepAlive->isFinished()));
+            //telloCmdThread->isFinished() &&
    application->exit(0);
   }
 
@@ -182,23 +167,33 @@ class Martello : public QMainWindow {
   }
 
   void slotTelloConnected() {
-   statusLabel->setText("CONNECTED");
+   if (tello.connected) statusLabel->setText("CONNECTED");
+   else statusLabel->setText("");
   }
-  void slotTelloAlive() {
-   tello.startComm=true;
-  }
-  void slotTelloDead() {
-   tello.connected=false; statusLabel->setText("");
+  void slotTelloInfoUpdate() {
+   speedLabel->setText(QString("Speed: "). \
+     append(QString::number(tello.speed).toAscii().data()).append("cm/s"));
+   batteryLabel->setText(QString("Battery: ").\
+     append(QString::number(tello.battery).toAscii().data()).append("%"));
+   timeLabel->setText(QString("F.Time: ").\
+     append(QString::number(tello.time)).append("s"));
+   wifiLabel->setText(QString("SNR: ").\
+     append(QString::number(tello.wifi)).append("dB"));
+   sdkLabel->setText(QString("SDKver: ").\
+     append(QString::number(tello.sdk)));
+//   snLabel->setText(QString("").append(tello.sn));
+//   qDebug("Result: %d %d %d %d %d",\
+//   tello.speed,tello.battery,tello.time,tello.wifi,tello.sdk);
   }
  
  private:
   QApplication *application;
 
   // Threads
-  QThread *telloKeepAlive,*telloCmdThread,*telloSttThread; //,*telloVidThread;
-  QMutex telloKAMutex,telloCmdMutex,telloSttMutex,telloVidMutex;
+  QThread *telloKeepAlive;
+  QMutex telloKAMutex;
   TelloStruct tello;
-  bool telloKATActive,telloCmdTActive,telloSttTActive,telloVidTActive;
+  bool telloKATActive;
 
   // GUI
   int guiX,guiY,guiWidth,guiHeight;
@@ -210,6 +205,7 @@ class Martello : public QMainWindow {
   QLabel *statusLabel;
 
   QStatusBar *guiStatusBar;
+  QLabel *speedLabel,*batteryLabel,*timeLabel,*wifiLabel,*sdkLabel,*snLabel;
 };
 
 #endif

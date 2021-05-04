@@ -36,27 +36,180 @@ class TelloKeepAlive : public QThread {
    parent=p; tello=ts; mutex=m; active=t;
   }
 
+ protected:
   virtual void run() {
+   QTime timer1,timer2,respGrace; bool wasDead,wasAlive; int sba;
+   QByteArray cmd; QString cmdResult; QProcess p; QString pingCmd;
    qDebug("Keepalive Thread: Activated..");
-   QProcess p; p.setStandardOutputFile("/dev/null");
-   QString pingCmd=QString("ping -c 1 -w 1 -q ").append(tello->ip);
-   qDebug("%s",pingCmd.toAscii().data());
+
+   wasDead=true; wasAlive=true; socket=new QUdpSocket();
+   p.setStandardOutputFile("/dev/null");
+   pingCmd=QString("ping -c 1 -w 1 -q ").append(tello->ip);
+   //qDebug("%s",pingCmd.toAscii().data());
+ 
+   timer1.start(); timer2.start(); respGrace.start();
    while (*active) {
-    p.start(pingCmd); p.waitForFinished();
-    if (p.exitCode()==0) {
-     if (!tello->connected) emit signalTelloAlive();
-     msleep(250);
-    } else { emit signalTelloDead(); msleep(250); }
+    if (timer1.elapsed()>=250) { // KEEP ALIVE & AUTOCONNECT - ITSELF
+     p.start(pingCmd); p.waitForFinished();
+     if (p.exitCode()==0) { // PING ALIVE
+      if (wasDead) { wasDead=false; wasAlive=true;
+
+       // IF UNCONNECTED, CONNECT
+       if (socket->state()==QAbstractSocket::UnconnectedState)
+        socket->connectToHost(tello->ip,8889);
+       while (socket->state()!=QAbstractSocket::ConnectedState);
+
+       // ENTER COMMAND MODE AFTER CONNECTION
+       if (socket->write(QByteArray("command").data())==-1)
+        qDebug("ERROR !! during data writing to socket->");
+
+       // WAIT FOR OK, WITHOUT ANY ENTRAPMENT INSIDE WHILE LOOP (2seconds max)
+       respGrace.restart();
+    //while(respGrace.elapsed()<500 && (sba=socket->pendingDatagramSize())<=0);
+       while(respGrace.elapsed()<500 && (sba=socket->bytesAvailable())<=0);
+       if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+        if (cmdResult=="ok") {
+         tello->connected=true;
+         emit signalTelloConnected();
+        }
+       }
+      }
+
+     } else { // PING DEAD
+      if (wasAlive) { wasAlive=false; wasDead=true;
+       tello->connected=false;
+       emit signalTelloConnected();
+      }
+     }
+     timer1.restart();
+
+    } // timer1
+
+    if (timer2.elapsed()>=500) { // MAIN COMMUNICATION LOOP - ONLY IF CONNECTED
+
+     if (tello->connected) {
+
+      // ***** GET INFO *****
+
+      // CURRENT SPEED
+      if (socket->write(QByteArray("speed?").data())==-1)
+       qDebug("ERROR !! during data writing to socket->");
+      respGrace.restart();
+      while(respGrace.elapsed()<500 && (sba=socket->bytesAvailable())<=0);
+      if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+       cmdResult=QString(socket->readAll()).toAscii();
+       tello->speed=cmdResult.toInt();
+      }
+  
+      // CURRENT BATTERY %
+      if (socket->write(QByteArray("battery?").data())==-1)
+       qDebug("ERROR !! during data writing to socket->");
+      respGrace.restart();
+      while(respGrace.elapsed()<500 && (sba=socket->bytesAvailable())<=0);
+      if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+       cmdResult=QString(socket->readAll()).toAscii();
+       tello->battery=cmdResult.toInt();
+      }
+
+      // CURRENT FLIGHT TIME
+      if (socket->write(QByteArray("time?").data())==-1)
+       qDebug("ERROR !! during data writing to socket->");
+      respGrace.restart();
+      while(respGrace.elapsed()<500 && (sba=socket->bytesAvailable())<=0);
+      if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+       cmdResult=QString(socket->readAll()).toAscii();
+       tello->time=cmdResult.toInt();
+      }
+ 
+      // CURRENT WIFI SNR LEVEL
+      if (socket->write(QByteArray("wifi?").data())==-1)
+       qDebug("ERROR !! during data writing to socket->");
+      respGrace.restart();
+      while(respGrace.elapsed()<500 && (sba=socket->bytesAvailable())<=0);
+      if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+       cmdResult=QString(socket->readAll()).toAscii();
+       tello->wifi=cmdResult.toInt();
+      }
+
+      // SDK VERSION
+      //if (socket->write(QByteArray("sdk?").data())==-1)
+      // qDebug("ERROR !! during data writing to socket->");
+      //respGrace.restart();
+      //while(respGrace.elapsed()<500 && (sba=socket->bytesAvailable())<=0);
+      //if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+      // cmdResult=QString(socket->readAll()).toAscii();
+      // tello->sdk=QString(socket->readAll()).toAscii().toInt();
+      //}
+      emit signalTelloInfoUpdate();
+
+      // ***** APPLY COMMANDS *****
+
+      // TAKEOFF, LAND, and EMERGENCY ARE HIGH PRIORITY
+      if (tello->cmdTakeOff && !tello->cmdLand && !tello->cmdEmergency) {
+       qDebug("TAKEOFF");
+       socket->write(QByteArray("takeoff").data());
+       respGrace.restart();
+       while(respGrace.elapsed()<5000 && (sba=socket->bytesAvailable())<=0);
+       if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+       tello->cmdTakeOff=false;
+       qDebug("takeoff: %s",cmdResult.toAscii().data()); }
+      } else if (!tello->cmdTakeOff && tello->cmdLand && !tello->cmdEmergency) {
+       qDebug("LAND");
+       socket->write(QByteArray("land").data());
+       respGrace.restart();
+       while(respGrace.elapsed()<5000 && (sba=socket->bytesAvailable())<=0);
+       if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+       tello->cmdLand=false;
+       qDebug("land: %s",cmdResult.toAscii().data()); }
+      } else if (!tello->cmdTakeOff && !tello->cmdLand && tello->cmdEmergency) {
+       qDebug("EMERGENCY");
+       socket->write(QByteArray("emergency").data());
+       respGrace.restart();
+       while(respGrace.elapsed()<5000 && (sba=socket->bytesAvailable())<=0);
+       if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+       tello->cmdEmergency=false;
+       qDebug("emergency: %s",cmdResult.toAscii().data()); }
+      } else if (tello->cmd!=Tello::cmdNULL) {
+
+      // MOVEMENT DUE TO SPECIFIC KEYSTROKES (WSAD,IKJL)
+       qDebug("MOVE");
+       if (tello->cmd==Tello::cmdForward)
+        socket->write(QByteArray("forward 20").data());
+       else if (tello->cmd==Tello::cmdBackward)
+        socket->write(QByteArray("backward 20").data());
+       else if (tello->cmd==Tello::cmdLeft)
+        socket->write(QByteArray("left 20").data());
+       else if (tello->cmd==Tello::cmdLeft)
+        socket->write(QByteArray("right 20").data());
+       else if (tello->cmd==Tello::cmdUp)
+        socket->write(QByteArray("up 20").data());
+       else if (tello->cmd==Tello::cmdDown)
+        socket->write(QByteArray("down 20").data());
+       else if (tello->cmd==Tello::cmdYawL)
+        socket->write(QByteArray("ccw 2").data());
+       else if (tello->cmd==Tello::cmdYawR)
+        socket->write(QByteArray("cw 2").data());
+       respGrace.restart();
+       while(respGrace.elapsed()<5000 && (sba=socket->bytesAvailable())<=0);
+       if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
+        qDebug("Move result: %s",cmdResult.toAscii().data());
+       }
+      }
+     }
+     timer2.restart();
+    } // timer2
    } // while
+   delete socket;
    qDebug("Keepalive Thread: Stopping..");
   }
 
  signals:
-  void signalTelloAlive();
-  void signalTelloDead();
+  void signalTelloConnected();
+  void signalTelloInfoUpdate();
 
  private:
   QObject *parent; TelloStruct *tello; QMutex *mutex; bool *active;
+  QUdpSocket *socket;
 };
 
 #endif

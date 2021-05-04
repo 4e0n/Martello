@@ -11,8 +11,8 @@ QT += network
 # Input
 HEADERS += tellostruct.h \
            tellokeepalive.h \
-           tellocmdthread.h \
-	   tellosttthread.h \
+#           tellocmdthread.h \
+#	   tellosttthread.h \
 #	   tellovidthread.h \
 	   martello.h
 SOURCES += main.cpp

@@ -2,20 +2,37 @@
 #ifndef TELLO_STRUCT_H
 #define TELLO_STRUCT_H
 
+namespace Tello {
+ const int cmdNULL=0;
+
+ const int cmdForward=101;
+ const int cmdBackward=102;
+ const int cmdLeft=103;
+ const int cmdRight=104;
+ const int cmdUp=105;
+ const int cmdDown=106;
+ const int cmdYawL=107;
+ const int cmdYawR=108;
+
+ const int cmdFlipF=111;
+ const int cmdFlipB=112;
+ const int cmdFlipL=113;
+ const int cmdFlipR=114;
+ const int cmdFlipFL=115;
+ const int cmdFlipFR=116;
+ const int cmdFlipBL=117;
+ const int cmdFlipBR=118;
+};
+
 struct TelloStruct {
- bool pollConnection,startComm,connected;
+ bool connected,cmdTakeOff,cmdLand,cmdEmergency,cmdStop;
  bool cmdQuit,sttQuit,vidQuit;
-
- bool cmdForward,cmdBackward,cmdLeft,cmdRight;
- bool cmdUp,cmdDown,cmdCCW,cmdCW;
- bool cmdFlip,cmdGo;
-
- bool cmdTakeOff,cmdLand,cmdEmergency,cmdStop;
+ int cmd;
 
  int cmdParam1,cmdParam2,cmdParam3,cmdParam4;
  QString ip;
 
- int speed,batLevel,time,snr,sdkVer; QString sn;
+ int speed,battery,time,wifi,sdk; QString sn;
 };
 
 #endif
