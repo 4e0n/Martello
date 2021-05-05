@@ -38,7 +38,7 @@ class TelloKeepAlive : public QThread {
 
  protected:
   virtual void run() {
-   QTime timer1,timer2,respGrace; bool wasDead,wasAlive; int sba;
+   QTime timer1,timer2,timer3,respGrace; bool wasDead,wasAlive; int sba;
    QByteArray cmd; QString cmdResult; QProcess p; QString pingCmd;
    qDebug("Keepalive Thread: Activated..");
 
@@ -85,11 +85,12 @@ class TelloKeepAlive : public QThread {
 
     } // timer1
 
-    if (timer2.elapsed()>=500) { // MAIN COMMUNICATION LOOP - ONLY IF CONNECTED
+    if (tello->connected) {
 
-     if (tello->connected) {
+     if (timer2.elapsed()>=250) {
+     // MAIN GETINFO LOOP - ONLY IF CONNECTED
 
-      // ***** GET INFO *****
+     // ***** GET INFO *****
 
       // CURRENT SPEED
       if (socket->write(QByteArray("speed?").data())==-1)
@@ -141,8 +142,12 @@ class TelloKeepAlive : public QThread {
       // tello->sdk=QString(socket->readAll()).toAscii().toInt();
       //}
       emit signalTelloInfoUpdate();
+      timer2.restart();
+     } // timer2
 
-      // ***** APPLY COMMANDS *****
+     //if (timer3.elapsed()>=100) {
+     if (true) {
+      // MAIN APPLYCOMMAND LOOP - ONLY IF CONNECTED
 
       // TAKEOFF, LAND, and EMERGENCY ARE HIGH PRIORITY
       if (tello->cmdTakeOff && !tello->cmdLand && !tello->cmdEmergency) {
@@ -171,33 +176,40 @@ class TelloKeepAlive : public QThread {
        qDebug("emergency: %s",cmdResult.toAscii().data()); }
       } else if (tello->cmd!=Tello::cmdNULL) {
 
-      // MOVEMENT DUE TO SPECIFIC KEYSTROKES (WSAD,IKJL)
-       qDebug("MOVE");
+       // MOVEMENT DUE TO SPECIFIC KEYSTROKES (WSAD,IKJL)
        if (tello->cmd==Tello::cmdForward)
+//        qDebug("Forward");
         socket->write(QByteArray("forward 20").data());
        else if (tello->cmd==Tello::cmdBackward)
+//        qDebug("Backward");
         socket->write(QByteArray("backward 20").data());
        else if (tello->cmd==Tello::cmdLeft)
+//        qDebug("Left");
         socket->write(QByteArray("left 20").data());
-       else if (tello->cmd==Tello::cmdLeft)
+       else if (tello->cmd==Tello::cmdRight)
+//        qDebug("Right");
         socket->write(QByteArray("right 20").data());
        else if (tello->cmd==Tello::cmdUp)
+//        qDebug("Up");
         socket->write(QByteArray("up 20").data());
        else if (tello->cmd==Tello::cmdDown)
+//        qDebug("Down");
         socket->write(QByteArray("down 20").data());
        else if (tello->cmd==Tello::cmdYawL)
-        socket->write(QByteArray("ccw 2").data());
+//        qDebug("YawL");
+        socket->write(QByteArray("ccw 10").data());
        else if (tello->cmd==Tello::cmdYawR)
-        socket->write(QByteArray("cw 2").data());
+//        qDebug("YawR");
+        socket->write(QByteArray("cw 10").data());
        respGrace.restart();
-       while(respGrace.elapsed()<5000 && (sba=socket->bytesAvailable())<=0);
+       while(respGrace.elapsed()<1000 && (sba=socket->bytesAvailable())<=0);
        if (sba>0) { cmdResult=QString(socket->readAll()).toAscii();
-        qDebug("Move result: %s",cmdResult.toAscii().data());
+//        qDebug("Move result: %s",cmdResult.toAscii().data());
        }
       }
      }
-     timer2.restart();
-    } // timer2
+     timer3.restart();
+    } // timer3
    } // while
    delete socket;
    qDebug("Keepalive Thread: Stopping..");

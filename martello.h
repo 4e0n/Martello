@@ -108,8 +108,8 @@ class Martello : public QMainWindow {
 
    // Acticate loops of all via flag
    telloKATActive=true;
-   //telloKeepAlive->start(QThread::HighestPriority);
-   telloKeepAlive->start();
+   telloKeepAlive->start(QThread::HighestPriority);
+   //telloKeepAlive->start();
 
    setWindowTitle(
     "MarTELLO v0.9.0 - (c) GPL 2021 Barkin Ilhan - barkin@unrlabs.org");
@@ -118,28 +118,26 @@ class Martello : public QMainWindow {
  protected:
   void keyPressEvent(QKeyEvent *e) {
    if (!e->isAutoRepeat()) {
-         if (e->key()==Qt::Key_W) { qDebug() << "W"; tello.cmd=Tello::cmdForward; }
-    else if (e->key()==Qt::Key_S) { qDebug() << "S"; tello.cmd=Tello::cmdBackward; }
-    else if (e->key()==Qt::Key_A) { qDebug() << "A"; tello.cmd=Tello::cmdLeft; }
-    else if (e->key()==Qt::Key_D) { qDebug() << "D"; tello.cmd=Tello::cmdRight; }
+         if (e->key()==Qt::Key_W) { tello.cmd=Tello::cmdForward; }
+    else if (e->key()==Qt::Key_S) { tello.cmd=Tello::cmdBackward; }
+    else if (e->key()==Qt::Key_A) { tello.cmd=Tello::cmdLeft; }
+    else if (e->key()==Qt::Key_D) { tello.cmd=Tello::cmdRight; }
 
-    else if (e->key()==Qt::Key_I) { qDebug() << "I"; tello.cmd=Tello::cmdUp; }
-    else if (e->key()==Qt::Key_K) { qDebug() << "K"; tello.cmd=Tello::cmdDown; }
-    else if (e->key()==Qt::Key_J) { qDebug() << "J"; tello.cmd=Tello::cmdYawL; }
-    else if (e->key()==Qt::Key_L) { qDebug() << "L"; tello.cmd=Tello::cmdYawR; }
+    else if (e->key()==Qt::Key_I) { tello.cmd=Tello::cmdUp; }
+    else if (e->key()==Qt::Key_K) { tello.cmd=Tello::cmdDown; }
+    else if (e->key()==Qt::Key_J) { tello.cmd=Tello::cmdYawL; }
+    else if (e->key()==Qt::Key_L) { tello.cmd=Tello::cmdYawR; }
 
-    else if (e->key()==Qt::Key_1) { qDebug() << "1"; tello.cmdTakeOff=true; }
-    else if (e->key()==Qt::Key_2) { qDebug() << "2"; tello.cmdLand=true; }
-    else if (e->key()==Qt::Key_0) { qDebug() << "0"; tello.cmdEmergency=true; }
+    else if (e->key()==Qt::Key_1) { tello.cmdTakeOff=true; }
+    else if (e->key()==Qt::Key_2) { tello.cmdLand=true; }
+    else if (e->key()==Qt::Key_0) { tello.cmdEmergency=true; }
    }
    e->ignore();
   }
 
   void keyReleaseEvent(QKeyEvent *e) {
-//   if (!e->isAutoRepeat()) {
    tello.cmd=Tello::cmdNULL;
    e->ignore();
-//   }
   }
   
  private slots:
